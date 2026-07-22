@@ -34,6 +34,20 @@ public class BeanContainer {
         inject();
     }
 
+    public <T> T getBean(Class<T> type) {
+        if (!this.beans.containsKey(type)) {
+            logger.warning("Bean does not exist: " + type.getName());
+            return null;
+        }
+
+        Object object = this.beans.get(type);
+        if (object == null) {
+            logger.warning("Bean instance for type " + type.getName() + " is null; it may have failed to instantiate, been removed, or is not managed by the container.");
+            return null;
+        }
+        return type.cast(object);
+    }
+
     private List<Class<?>> scan(String packageName) {
         // step 1 - scan classpath
         List<Class<?>> result = new ArrayList<>();
@@ -74,7 +88,7 @@ public class BeanContainer {
     private void instantiate(List<Class<?>> discoveredClasses) {
         for (Class<?> discClass : discoveredClasses) {
             if (isIneligibleForWiring(discClass)) {
-                logger.warning("Class is ineligible for wiring: " + discClass.getName());
+                logger.info("Class is ineligible for wiring: " + discClass.getName());
                 continue;
             }
             try {
