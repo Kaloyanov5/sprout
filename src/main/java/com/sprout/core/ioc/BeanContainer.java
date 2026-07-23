@@ -4,6 +4,7 @@ import com.sprout.core.annotation.Wire;
 import com.sprout.core.annotation.Wireable;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -12,6 +13,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,16 +54,24 @@ public class BeanContainer {
         // step 1 - scan classpath
         List<Class<?>> result = new ArrayList<>();
         String resourcePath = packageName.replace(".", "/");
-        URL url = Thread.currentThread().getContextClassLoader().getResource(resourcePath);
-        if (url == null) return null;
-        File packageFile = null;
+        Enumeration<URL> urls;
         try {
-            packageFile = Paths.get(url.toURI()).toFile();
-        } catch (URISyntaxException e) {
-            logger.warning("Package not found: " + resourcePath);
+            urls = Thread.currentThread().getContextClassLoader().getResources(resourcePath);
+        } catch (IOException e) {
+            logger.log(Level.WARNING, "Failed to resolve classpath resources for: " + resourcePath, e);
+            return null;
         }
+        if (!urls.hasMoreElements()) return null;
 
-        walk(packageFile, packageName, result);
+        while (urls.hasMoreElements()) {
+            URL url = urls.nextElement();
+            try {
+                File packageFile = Paths.get(url.toURI()).toFile();
+                walk(packageFile, packageName, result);
+            } catch (URISyntaxException e) {
+                logger.warning("Package not found: " + resourcePath);
+            }
+        }
         return result;
     }
 
