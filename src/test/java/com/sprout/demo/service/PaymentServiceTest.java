@@ -20,7 +20,7 @@ class PaymentServiceTest {
     private PaymentGateway paymentGateway;
 
     @InjectMocks
-    private PaymentService paymentService;
+    private PaymentServiceImpl paymentService;
 
     @Test
     void payReturnsSuccessfulResultWhenGatewayCharges() {
