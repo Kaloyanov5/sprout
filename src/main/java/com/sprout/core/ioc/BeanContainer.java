@@ -138,7 +138,11 @@ public class BeanContainer {
                 if (!field.isAnnotationPresent(Wire.class)) continue;
                 Class<?> fieldType = field.getType();
                 if (!this.beans.containsKey(fieldType)) {
-                    throw new NoSuchBeanDefinitionException(field.getName() + " " + fieldType + " " + field.getClass());
+                    throw new NoSuchBeanDefinitionException(
+                            "No bean of type " + fieldType.getName()
+                                    + " found for @Wire field '" + field.getName()
+                                    + "' in " + field.getDeclaringClass().getName()
+                                    + ". Is " + fieldType.getSimpleName() + " annotated with @Wireable?");
                 }
                 try {
                     field.setAccessible(true);
