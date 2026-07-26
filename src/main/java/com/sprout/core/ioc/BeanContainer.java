@@ -80,9 +80,9 @@ public class BeanContainer {
             if (file.getName().endsWith(".class")) {
                 String fullyQualifiedClassName = currentPackage + "." + file.getName().replace(".class", "");
                 try {
-                    result.add(Class.forName(fullyQualifiedClassName));
-                } catch (ClassNotFoundException e) {
-                    logger.warning("Class not found: " + fullyQualifiedClassName);
+                    result.add(Class.forName(fullyQualifiedClassName, false, Thread.currentThread().getContextClassLoader()));
+                } catch (ClassNotFoundException | LinkageError e) {
+                    logger.log(Level.WARNING, "Skipping class: " + fullyQualifiedClassName, e);
                 }
                 continue;
             }
