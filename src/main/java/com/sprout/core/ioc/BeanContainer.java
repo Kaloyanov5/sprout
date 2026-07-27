@@ -8,10 +8,12 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.*;
+import java.net.JarURLConnection;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.jar.JarEntry;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -61,12 +63,35 @@ public class BeanContainer {
 
         while (urls.hasMoreElements()) {
             URL url = urls.nextElement();
-            try {
-                File packageFile = Paths.get(url.toURI()).toFile();
-                walk(packageFile, packageName, result);
-            } catch (URISyntaxException e) {
-                logger.warning("Package not found: " + resourcePath);
+            String urlProtocol = url.getProtocol();
+
+            switch (urlProtocol) {
+                case "file" -> {
+                    try {
+                        File packageFile = Paths.get(url.toURI()).toFile();
+                        walk(packageFile, packageName, result);
+                    } catch (URISyntaxException e) {
+                        logger.warning("Package not found: " + resourcePath);
+                    }
+                }
+                case "jar" -> {
+                    try {
+                        Enumeration<JarEntry> jarEntries = ((JarURLConnection) url.openConnection()).getJarFile().entries();
+                        while (jarEntries.hasMoreElements()) {
+                            JarEntry jarEntry = jarEntries.nextElement();
+                            String jarEntryName = jarEntry.getName();
+                            if (jarEntryName.startsWith(resourcePath) && jarEntryName.endsWith(".class")) {
+                                String fullyQualifiedJarName = jarEntryName.replace('/', '.').replace(".class", "");
+                                registerClass(fullyQualifiedJarName, result);
+                            }
+                        }
+                    } catch (IOException e) {
+                        logger.log(Level.WARNING, "Failed to scan JAR entries for package '" + packageName + "' from URL: " + url, e);
+                    }
+                }
+                default -> logger.warning("Unsupported URL protocol '" + urlProtocol + "' while scanning package: " + resourcePath + " (URL: " + url + ")");
             }
+
         }
         return result;
     }
@@ -79,11 +104,7 @@ public class BeanContainer {
         for (File file : files) {
             if (file.getName().endsWith(".class")) {
                 String fullyQualifiedClassName = currentPackage + "." + file.getName().replace(".class", "");
-                try {
-                    result.add(Class.forName(fullyQualifiedClassName, false, Thread.currentThread().getContextClassLoader()));
-                } catch (ClassNotFoundException | LinkageError e) {
-                    logger.log(Level.WARNING, "Skipping class: " + fullyQualifiedClassName, e);
-                }
+                registerClass(fullyQualifiedClassName, result);
                 continue;
             }
             String subDirectory = currentPackage + "." + file.getName();
@@ -196,5 +217,13 @@ public class BeanContainer {
 
         Class<?> superclass = clazz.getSuperclass();
         return superclass != null && interfaceAnnotationFallback(superclass, method, annotation);
+    }
+
+    private void registerClass(String fullyQualifiedName, List<Class<?>> result) {
+        try {
+            result.add(Class.forName(fullyQualifiedName, false, Thread.currentThread().getContextClassLoader()));
+        } catch (ClassNotFoundException | LinkageError e) {
+            logger.log(Level.WARNING, "Skipping class: " + fullyQualifiedName, e);
+        }
     }
 }
