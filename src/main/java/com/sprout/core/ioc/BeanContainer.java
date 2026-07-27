@@ -130,20 +130,19 @@ public class BeanContainer {
     }
 
     private void inject() {
-        for (Object bean : this.beans.values()) {
-            bean = proxyToTarget.getOrDefault(bean, bean);
+        Set<Object> beanSet = Collections.newSetFromMap(new IdentityHashMap<>());
+        this.beans.values().forEach(bean -> beanSet.add(proxyToTarget.getOrDefault(bean, bean)));
+        for (Object bean : beanSet) {
+            List<Field> beanFields = new ArrayList<>();
+            Class<?> currentClass = bean.getClass();
+            while (currentClass != null) {
+                beanFields.addAll(Arrays.asList(currentClass.getDeclaredFields()));
+                currentClass = currentClass.getSuperclass();
+            }
 
-            Field[] beanFields = bean.getClass().getDeclaredFields();
             for (Field field : beanFields) {
                 if (!field.isAnnotationPresent(Wire.class)) continue;
-                Class<?> fieldType = field.getType();
-                if (!this.beans.containsKey(fieldType)) {
-                    throw new NoSuchBeanDefinitionException(
-                            "No bean of type " + fieldType.getName()
-                                    + " found for @Wire field '" + field.getName()
-                                    + "' in " + field.getDeclaringClass().getName()
-                                    + ". Is " + fieldType.getSimpleName() + " annotated with @Wireable?");
-                }
+                Class<?> fieldType = resolveBeanType(field);
                 try {
                     field.setAccessible(true);
                     field.set(bean, this.beans.get(fieldType));
@@ -152,6 +151,18 @@ public class BeanContainer {
                 }
             }
         }
+    }
+
+    private Class<?> resolveBeanType(Field field) {
+        Class<?> fieldType = field.getType();
+        if (!this.beans.containsKey(fieldType)) {
+            throw new NoSuchBeanDefinitionException(
+                    "No bean of type " + fieldType.getName()
+                            + " found for @Wire field '" + field.getName()
+                            + "' in " + field.getDeclaringClass().getName()
+                            + ". Is " + fieldType.getSimpleName() + " annotated with @Wireable?");
+        }
+        return fieldType;
     }
 
     private boolean isIneligibleForWiring(Class<?> clazz) {
@@ -173,11 +184,17 @@ public class BeanContainer {
         return Arrays.equals(m1.getParameterTypes(), m2.getParameterTypes());
     }
 
-    private boolean interfaceAnnotationFallback(Class<?> clazz, Method m1, Class<? extends Annotation> annotation) {
-        return Arrays.stream(clazz.getInterfaces()
-                ).anyMatch(c ->
-                Arrays.stream(c.getDeclaredMethods()
-                ).anyMatch(m2 -> isExactMethod(m1, m2) && m2.isAnnotationPresent(annotation))
-        );
+    private boolean interfaceAnnotationFallback(Class<?> clazz, Method method, Class<? extends Annotation> annotation) {
+        for (Class<?> clazzInterface : clazz.getInterfaces()) {
+            for (Method interfaceMethod : clazzInterface.getDeclaredMethods()) {
+                if (isExactMethod(method, interfaceMethod) && interfaceMethod.isAnnotationPresent(annotation))
+                    return true;
+            }
+
+            if (interfaceAnnotationFallback(clazzInterface, method, annotation)) return true;
+        }
+
+        Class<?> superclass = clazz.getSuperclass();
+        return superclass != null && interfaceAnnotationFallback(superclass, method, annotation);
     }
 }
