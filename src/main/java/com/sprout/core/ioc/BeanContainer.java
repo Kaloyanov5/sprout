@@ -25,11 +25,6 @@ public class BeanContainer {
 
     public void start(String packageName) {
         List<Class<?>> result = scan(packageName);
-        if (result == null) {
-            logger.warning("No discovered classes");
-            return;
-        }
-
         instantiate(result);
         inject();
     }
@@ -56,10 +51,9 @@ public class BeanContainer {
         try {
             urls = Thread.currentThread().getContextClassLoader().getResources(resourcePath);
         } catch (IOException e) {
-            logger.log(Level.WARNING, "Failed to resolve classpath resources for: " + resourcePath, e);
-            return null;
+            throw new IllegalStateException("Failed to scan package: " + packageName, e);
         }
-        if (!urls.hasMoreElements()) return null;
+        if (!urls.hasMoreElements()) throw new IllegalStateException("Package not found: " + packageName);
 
         while (urls.hasMoreElements()) {
             URL url = urls.nextElement();
@@ -80,8 +74,8 @@ public class BeanContainer {
                         while (jarEntries.hasMoreElements()) {
                             JarEntry jarEntry = jarEntries.nextElement();
                             String jarEntryName = jarEntry.getName();
-                            if (jarEntryName.startsWith(resourcePath) && jarEntryName.endsWith(".class")) {
-                                String fullyQualifiedJarName = jarEntryName.replace('/', '.').replace(".class", "");
+                            if (jarEntryName.startsWith(resourcePath + "/") && jarEntryName.endsWith(".class")) {
+                                String fullyQualifiedJarName = jarEntryName.substring(0, jarEntryName.length() - ".class".length()).replace('/', '.');
                                 registerClass(fullyQualifiedJarName, result);
                             }
                         }
@@ -102,12 +96,13 @@ public class BeanContainer {
 
         if (files == null) return;
         for (File file : files) {
-            if (file.getName().endsWith(".class")) {
-                String fullyQualifiedClassName = currentPackage + "." + file.getName().replace(".class", "");
+            String fileName = file.getName();
+            if (fileName.endsWith(".class")) {
+                String fullyQualifiedClassName = currentPackage + "." + fileName.substring(0, fileName.length() - ".class".length());
                 registerClass(fullyQualifiedClassName, result);
                 continue;
             }
-            String subDirectory = currentPackage + "." + file.getName();
+            String subDirectory = currentPackage + "." + fileName;
             walk(file, subDirectory, result);
         }
     }
