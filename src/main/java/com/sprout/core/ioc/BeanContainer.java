@@ -188,8 +188,8 @@ public class BeanContainer {
     private boolean needsAop(Class<?> clazz) {
         return Arrays.stream(clazz.getDeclaredMethods()).anyMatch(m ->
                 (m.isAnnotationPresent(Logged.class) || interfaceAnnotationFallback(clazz, m, Logged.class)) ||
-                (m.isAnnotationPresent(MyTransactional.class) || interfaceAnnotationFallback(clazz, m, MyTransactional.class)) ||
-                (m.isAnnotationPresent(MyRetry.class) || interfaceAnnotationFallback(clazz, m, MyRetry.class))
+                (m.isAnnotationPresent(Transacted.class) || interfaceAnnotationFallback(clazz, m, Transacted.class)) ||
+                (m.isAnnotationPresent(Retried.class) || interfaceAnnotationFallback(clazz, m, Retried.class))
         );
     }
 

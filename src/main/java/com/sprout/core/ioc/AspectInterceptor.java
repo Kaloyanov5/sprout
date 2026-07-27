@@ -1,8 +1,8 @@
 package com.sprout.core.ioc;
 
 import com.sprout.core.annotation.Logged;
-import com.sprout.core.annotation.MyRetry;
-import com.sprout.core.annotation.MyTransactional;
+import com.sprout.core.annotation.Retried;
+import com.sprout.core.annotation.Transacted;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
@@ -41,9 +41,9 @@ public class AspectInterceptor implements InvocationHandler {
         }
 
         boolean logged = resolveAnnotation(method, targetMethod, Logged.class) != null;
-        boolean transactional = resolveAnnotation(method, targetMethod, MyTransactional.class) != null;
+        boolean transactional = resolveAnnotation(method, targetMethod, Transacted.class) != null;
         boolean isTransactionActive = false;
-        MyRetry retryable = resolveAnnotation(method, targetMethod, MyRetry.class);
+        Retried retryable = resolveAnnotation(method, targetMethod, Retried.class);
 
         if (logged)
             logger.info("--- [LOG] Starting method " + method.getName() + " ---");

@@ -5,7 +5,7 @@ import com.sprout.core.annotation.*;
 public interface PaymentService {
 
     @Logged
-    @MyTransactional
-    @MyRetry
+    @Transacted
+    @Retried
     PaymentResult pay(String accountId, double amount);
 }
