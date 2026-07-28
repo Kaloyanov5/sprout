@@ -42,16 +42,13 @@ public class AspectInterceptor implements InvocationHandler {
 
         boolean logged = resolveAnnotation(method, targetMethod, Logged.class) != null;
         boolean transactional = resolveAnnotation(method, targetMethod, Transacted.class) != null;
-        boolean isTransactionActive = false;
+        TransactionScope transaction = transactional ? new TransactionScope() : null;
         Retried retryable = resolveAnnotation(method, targetMethod, Retried.class);
 
         if (logged)
             logger.info("--- [LOG] Starting method " + method.getName() + " ---");
 
-        if (transactional) {
-            logger.info("--- BEGIN TX ---");
-            isTransactionActive = true;
-        }
+        if (transaction != null) transaction.begin();
 
         try {
             Object response = null;
@@ -60,22 +57,17 @@ public class AspectInterceptor implements InvocationHandler {
                 Throwable exception = null;
 
                 for (int i = 0; i < times; i++) {
-                    if (!isTransactionActive && transactional) {
-                        isTransactionActive = true;
-                        logger.info("--- BEGIN TX ---");
-                    }
+                    if (i > 0 && transaction != null) transaction.begin();
                     try {
                         response = method.invoke(target, args);
                         exception = null;
                         break;
                     } catch (InvocationTargetException e) {
                         exception = e;
-                        if (transactional) {
-                            isTransactionActive = false;
-                            logger.info("--- ROLLBACK TX ---");
-                        }
-                        if (i < times - 1)
+                        if (i < times - 1) {
+                            if (transaction != null) transaction.rollback();
                             logger.info("--- Retrying method... (Attempt " + (i + 1) + "/" + times + ") ---");
+                        }
                     }
                 }
 
@@ -85,8 +77,7 @@ public class AspectInterceptor implements InvocationHandler {
                 response = method.invoke(target, args);
             }
 
-            if (transactional)
-                logger.info("--- COMMIT TX ---");
+            if (transaction != null) transaction.commit();
 
             if (logged)
                 logger.info("--- [LOG] Finished method " + method.getName() + " ---");
@@ -95,8 +86,7 @@ public class AspectInterceptor implements InvocationHandler {
         } catch (Throwable e) {
             if (logged)
                 logger.info("--- [LOG] Exception thrown by: " + method.getName() + " ---");
-            if (transactional && isTransactionActive)
-                logger.info("--- ROLLBACK TX ---");
+            if (transaction != null) transaction.rollback();
             throw e instanceof InvocationTargetException ? ((InvocationTargetException) e).getTargetException() : e;
         }
     }
