@@ -224,18 +224,24 @@ public class BeanContainer {
             }
 
             try {
-                Constructor<?> ctor = clazz.getDeclaredConstructor();
-                if (!Modifier.isPublic(ctor.getModifiers())) {
-                    return "no accessible public no-arg constructor";
+                int mods = clazz.getDeclaredConstructor().getModifiers();
+                if (Modifier.isPrivate(mods)) {
+                    return "no-arg constructor is private and cannot be invoked by a subclass";
+                }
+                if (!Modifier.isPublic(mods) && !Modifier.isProtected(mods)) {
+                    return "no-arg constructor is package-private; the generated subclass is defined in a separate classloader, so it is not in the same runtime package";
                 }
             } catch (NoSuchMethodException e) {
-                return "no public no-arg constructor";
+                return "no no-arg constructor";
             }
 
             for (Method m : findAopMethods(clazz)) {
                 int mods = m.getModifiers();
                 if (Modifier.isFinal(mods) || Modifier.isPrivate(mods) || Modifier.isStatic(mods)) {
                     return "annotated method '" + m.getName() + "' is final/private/static and cannot be intercepted by subclassing";
+                }
+                if (!Modifier.isPublic(mods) && !Modifier.isProtected(mods)) {
+                    return "annotated method '" + m.getName() + "' is package-private; the generated subclass is defined in a separate classloader, so it cannot override it";
                 }
             }
         }
