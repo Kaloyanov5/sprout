@@ -32,12 +32,7 @@ public class AspectInterceptor implements InvocationHandler {
         } catch (InvocationTargetException e) {
             throw e.getTargetException();
         }
-        Method targetMethod;
-        try {
-            targetMethod = target.getClass().getMethod(method.getName(), method.getParameterTypes());
-        } catch (NoSuchMethodException e) {
-            throw new IllegalStateException("Cannot find " + method.getName() + " on " + target.getClass(), e);
-        }
+        Method targetMethod = resolveTargetMethod(method);
 
         boolean logged = resolveAnnotation(method, targetMethod, Logged.class) != null;
         boolean transactional = resolveAnnotation(method, targetMethod, Transacted.class) != null;
@@ -58,7 +53,7 @@ public class AspectInterceptor implements InvocationHandler {
                 for (int i = 0; i < times; i++) {
                     if (i > 0 && transaction != null) transaction.begin();
                     try {
-                        response = method.invoke(target, args);
+                        response = targetMethod.invoke(target, args);
                         exception = null;
                         break;
                     } catch (InvocationTargetException e) {
@@ -73,7 +68,7 @@ public class AspectInterceptor implements InvocationHandler {
                 if (exception != null)
                     throw exception;
             } else {
-                response = method.invoke(target, args);
+                response = targetMethod.invoke(target, args);
             }
 
             if (transaction != null) transaction.commit();
@@ -88,6 +83,24 @@ public class AspectInterceptor implements InvocationHandler {
             if (transaction != null) transaction.rollback();
             throw e instanceof InvocationTargetException ? ((InvocationTargetException) e).getTargetException() : e;
         }
+    }
+
+    /**
+     * Resolves the advised method on the target, walking up the hierarchy. {@link Class#getMethod} is
+     * public-only, so it misses the protected methods a subclass proxy is able to intercept.
+     */
+    private Method resolveTargetMethod(Method method) {
+        Class<?> current = target.getClass();
+        while (current != null) {
+            try {
+                Method targetMethod = current.getDeclaredMethod(method.getName(), method.getParameterTypes());
+                targetMethod.setAccessible(true);
+                return targetMethod;
+            } catch (NoSuchMethodException e) {
+                current = current.getSuperclass();
+            }
+        }
+        throw new IllegalStateException("Cannot find " + method.getName() + " on " + target.getClass());
     }
 
     private <T extends Annotation> T resolveAnnotation(Method method, Method targetMethod, Class<T> annotationClass) {
