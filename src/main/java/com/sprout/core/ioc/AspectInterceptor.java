@@ -32,7 +32,6 @@ public class AspectInterceptor implements InvocationHandler {
         } catch (InvocationTargetException e) {
             throw e.getTargetException();
         }
-
         Method targetMethod;
         try {
             targetMethod = target.getClass().getMethod(method.getName(), method.getParameterTypes());
