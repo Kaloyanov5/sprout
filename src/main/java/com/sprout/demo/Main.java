@@ -2,6 +2,7 @@ package com.sprout.demo;
 
 import com.sprout.core.ioc.BeanContainer;
 import com.sprout.demo.service.PaymentService;
+import com.sprout.demo.service.ReportService;
 
 public class Main {
 
@@ -13,5 +14,6 @@ public class Main {
         PaymentService psv = container.getBean(PaymentService.class);
 
         System.out.println(psv.pay("1234", 50));
+        container.getBean(ReportService.class).generate();
     }
 }
