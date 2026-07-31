@@ -31,14 +31,12 @@ public class BeanContainer {
 
     public <T> T getBean(Class<T> type) {
         if (!this.beans.containsKey(type)) {
-            logger.warning("Bean does not exist: " + type.getName());
-            return null;
+            throw new NoSuchBeanDefinitionException("No bean of type " + type.getName() + " is registered in the container.");
         }
 
         Object object = this.beans.get(type);
         if (object == null) {
-            logger.warning("Bean instance for type " + type.getName() + " is null; it may have failed to instantiate, been removed, or is not managed by the container.");
-            return null;
+            throw new NoSuchBeanDefinitionException("Bean instance for type " + type.getName() + " is null; it may have failed to instantiate, been removed, or is not managed by the container.");
         }
         return type.cast(object);
     }
