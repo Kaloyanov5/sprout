@@ -3,6 +3,8 @@ package com.sprout.core.ioc;
 import com.sprout.core.annotation.*;
 import com.sprout.core.exception.NoSuchBeanDefinitionException;
 import com.sprout.core.exception.NoUniqueBeanDefinitionException;
+import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.implementation.InvocationHandlerAdapter;
 
 import java.io.File;
 import java.io.IOException;
@@ -16,6 +18,8 @@ import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import static net.bytebuddy.matcher.ElementMatchers.*;
 
 public class BeanContainer {
 
@@ -111,26 +115,48 @@ public class BeanContainer {
                 logger.info("Class is ineligible for wiring: " + clazz.getName());
                 continue;
             }
+
+            boolean requiresAop = needsAop(clazz);
+            boolean jdkProxy = requiresAop && useJdkProxy(clazz);
+            if (requiresAop) {
+                String problem = proxyabilityProblem(clazz);
+                if (problem != null)
+                    throw new IllegalStateException("AOP required but class cannot be proxied for " + clazz.getName() + ": " + problem);
+            }
+
             try {
-                Object target = clazz.getDeclaredConstructor().newInstance();
+                Constructor<?> constructor = clazz.getDeclaredConstructor();
+                constructor.setAccessible(true);
+                Object target = constructor.newInstance();
                 Object finalBean = target;
-                if (needsAop(clazz)) {
-                    if (clazz.getInterfaces().length == 0) {
-                        logger.warning("No interface for the proxy to implement for class:" + clazz.getName());
-                        this.beans.put(clazz, target);
-                    } else {
-                        Object proxy = Proxy.newProxyInstance(
+                if (requiresAop) {
+                    Object proxy;
+                    if (jdkProxy) {
+                        // JDK Proxy
+                        proxy = Proxy.newProxyInstance(
                                 target.getClass().getClassLoader(),
                                 target.getClass().getInterfaces(),
                                 new AspectInterceptor(target)
                         );
-                        finalBean = proxy;
-                        proxyToTarget.put(proxy, target);
+
+                    } else {
+                        // ByteBuddy subclass proxy
+                        proxy = new ByteBuddy()
+                                .subclass(clazz)
+                                .method(any().and(not(isDeclaredBy(Object.class))))
+                                .intercept(InvocationHandlerAdapter.of(new AspectInterceptor(target)))
+                                .make()
+                                .load(clazz.getClassLoader())
+                                .getLoaded().getDeclaredConstructor().newInstance();
                     }
+                    finalBean = proxy;
+                    if (clazz.isInstance(proxy)) this.beans.put(clazz, proxy);
+                    proxyToTarget.put(proxy, target);
                 } else {
                     this.beans.put(clazz, target);
                 }
                 for (Class<?> implInterface : clazz.getInterfaces()) {
+                    if (implInterface.getMethods().length == 0) continue;
                     Object beanValue = this.beans.putIfAbsent(implInterface, finalBean);
                     if (beanValue != null) {
                         throw new NoUniqueBeanDefinitionException(implInterface + " is claimed by both " + beanValue + " and " + finalBean);
@@ -184,11 +210,78 @@ public class BeanContainer {
     }
 
     private boolean needsAop(Class<?> clazz) {
-        return Arrays.stream(clazz.getDeclaredMethods()).anyMatch(m ->
-                (m.isAnnotationPresent(Logged.class) || interfaceAnnotationFallback(clazz, m, Logged.class)) ||
-                (m.isAnnotationPresent(Transacted.class) || interfaceAnnotationFallback(clazz, m, Transacted.class)) ||
-                (m.isAnnotationPresent(Retried.class) || interfaceAnnotationFallback(clazz, m, Retried.class))
-        );
+        return !findAopMethods(clazz).isEmpty();
+    }
+
+    /**
+     * Returns null when proxying is possible, otherwise a brief explanation why proxying is impossible.
+     */
+    private String proxyabilityProblem(Class<?> clazz) {
+        boolean jdk = useJdkProxy(clazz);
+        if (!jdk) {
+            if (Modifier.isFinal(clazz.getModifiers())) {
+                return "class is final (cannot subclass)";
+            }
+
+            try {
+                Constructor<?> ctor = clazz.getDeclaredConstructor();
+                if (!Modifier.isPublic(ctor.getModifiers())) {
+                    return "no accessible public no-arg constructor";
+                }
+            } catch (NoSuchMethodException e) {
+                return "no public no-arg constructor";
+            }
+
+            for (Method m : findAopMethods(clazz)) {
+                int mods = m.getModifiers();
+                if (Modifier.isFinal(mods) || Modifier.isPrivate(mods) || Modifier.isStatic(mods)) {
+                    return "annotated method '" + m.getName() + "' is final/private/static and cannot be intercepted by subclassing";
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean interfaceMethodExists(Class<?> clazz, Method method) {
+        for (Class<?> iface : clazz.getInterfaces()) {
+            for (Method im : iface.getDeclaredMethods()) {
+                if (isExactMethod(method, im)) return true;
+            }
+            if (interfaceMethodExists(iface, method)) return true;
+        }
+
+        Class<?> superclass = clazz.getSuperclass();
+        return superclass != null && interfaceMethodExists(superclass, method);
+    }
+
+    private List<Method> findAopMethods(Class<?> clazz) {
+        Class<?> current = clazz;
+        List<Method> aopMethods = new ArrayList<>();
+        while (current != null && current != Object.class) {
+            for (Method m : current.getDeclaredMethods()) {
+                if (isAopMethod(clazz, m)) {
+                    aopMethods.add(m);
+                }
+            }
+            current = current.getSuperclass();
+        }
+        return aopMethods;
+    }
+
+    private boolean useJdkProxy(Class<?> clazz) {
+        List<Method> aopMethods = findAopMethods(clazz);
+        return clazz.getInterfaces().length > 0
+                && !aopMethods.isEmpty()
+                && aopMethods.stream().allMatch(m -> interfaceMethodExists(clazz, m));
+    }
+
+    private boolean isAopMethod(Class<?> rootClass, Method method) {
+        for (Class<? extends Annotation> ann : Aop.ANNOTATIONS) {
+            if (method.isAnnotationPresent(ann) || interfaceAnnotationFallback(rootClass, method, ann)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isExactMethod(Method m1, Method m2) {
