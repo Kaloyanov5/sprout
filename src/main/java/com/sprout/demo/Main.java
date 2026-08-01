@@ -3,6 +3,7 @@ package com.sprout.demo;
 import com.sprout.core.ioc.BeanContainer;
 import com.sprout.demo.service.PaymentService;
 import com.sprout.demo.service.ReportService;
+import com.sprout.demo.service.Sub;
 
 public class Main {
 
@@ -15,5 +16,8 @@ public class Main {
 
         System.out.println(psv.pay("1234", 50));
         container.getBean(ReportService.class).generate();
+
+        Sub sub = container.getBean(Sub.class);
+        sub.audit();
     }
 }
