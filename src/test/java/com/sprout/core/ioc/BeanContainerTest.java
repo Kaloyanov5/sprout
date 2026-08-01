@@ -1,11 +1,12 @@
 package com.sprout.core.ioc;
 
+import com.sprout.core.exception.NoSuchBeanDefinitionException;
 import com.sprout.demo.service.PaymentResult;
 import com.sprout.demo.service.PaymentService;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BeanContainerTest {
@@ -24,10 +25,10 @@ class BeanContainerTest {
     }
 
     @Test
-    void getBeanReturnsNullForUnmanagedType() {
+    void getBeanThrowsForUnmanagedType() {
         BeanContainer container = new BeanContainer();
         container.start("com.sprout.demo");
 
-        assertNull(container.getBean(String.class));
+        assertThrows(NoSuchBeanDefinitionException.class, () -> container.getBean(String.class));
     }
 }
