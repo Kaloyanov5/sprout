@@ -232,7 +232,8 @@ public class BeanContainer {
             }
 
             for (Method m : aopMethods) {
-                int mods = m.getModifiers();
+                Method actual = mostDerived(clazz, m);
+                int mods = actual.getModifiers();
                 if (Modifier.isFinal(mods) || Modifier.isPrivate(mods) || Modifier.isStatic(mods)) {
                     return "annotated method '" + m.getName() + "' is final/private/static and cannot be intercepted by subclassing";
                 }
@@ -268,6 +269,18 @@ public class BeanContainer {
             current = current.getSuperclass();
         }
         return aopMethods;
+    }
+
+    private Method mostDerived(Class<?> clazz, Method m) {
+        Class<?> current = clazz;
+        while (current != null) {
+            try {
+                return current.getDeclaredMethod(m.getName(), m.getParameterTypes());
+            } catch (NoSuchMethodException e) {
+                current = current.getSuperclass();
+            }
+        }
+        return m;
     }
 
     private boolean useJdkProxy(Class<?> clazz, List<Method> aopMethods) {
