@@ -89,18 +89,24 @@ public class AspectInterceptor implements InvocationHandler {
      * Resolves the advised method on the target, walking up the hierarchy. {@link Class#getMethod} is
      * public-only, so it misses the protected methods a subclass proxy is able to intercept.
      */
-    private Method resolveTargetMethod(Method method) {
+    private Method resolveTargetMethod(Method m) {
         Class<?> current = target.getClass();
+        Method targetMethod;
         while (current != null) {
             try {
-                Method targetMethod = current.getDeclaredMethod(method.getName(), method.getParameterTypes());
+                targetMethod = current.getDeclaredMethod(m.getName(), m.getParameterTypes());
                 targetMethod.setAccessible(true);
                 return targetMethod;
             } catch (NoSuchMethodException e) {
                 current = current.getSuperclass();
             }
         }
-        throw new IllegalStateException("Cannot find " + method.getName() + " on " + target.getClass());
+        try {
+            targetMethod = target.getClass().getMethod(m.getName(), m.getParameterTypes());
+            targetMethod.setAccessible(true);
+            return targetMethod;
+        } catch (NoSuchMethodException ignored) { }
+        throw new IllegalStateException("Cannot find " + m.getName() + " on " + target.getClass());
     }
 
     private <T extends Annotation> T resolveAnnotation(Method method, Method targetMethod, Class<T> annotationClass) {
