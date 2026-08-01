@@ -111,11 +111,20 @@ public class AspectInterceptor implements InvocationHandler {
 
     private <T extends Annotation> T resolveAnnotation(Method method, Method targetMethod, Class<T> annotationClass) {
         T annotation = targetMethod.getAnnotation(annotationClass);
+        if (annotation != null) return annotation;
 
-        annotation = annotation == null
-                ? method.getAnnotation(annotationClass)
-                : annotation;
+        annotation = method.getAnnotation(annotationClass);
+        if (annotation != null) return annotation;
 
-        return annotation;
+        Class<?> current = target.getClass();
+        while (current != null) {
+            try {
+                Method currentDeclaredMethod = current.getDeclaredMethod(method.getName(), method.getParameterTypes());
+                annotation = currentDeclaredMethod.getAnnotation(annotationClass);
+                if (annotation != null) return annotation;
+            } catch (NoSuchMethodException ignored) { }
+            current = current.getSuperclass();
+        }
+        return null;
     }
 }
