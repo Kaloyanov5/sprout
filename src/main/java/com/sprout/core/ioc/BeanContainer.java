@@ -116,10 +116,11 @@ public class BeanContainer {
                 continue;
             }
 
-            boolean requiresAop = needsAop(clazz);
-            boolean jdkProxy = requiresAop && useJdkProxy(clazz);
+            List<Method> aopMethods = findAopMethods(clazz);
+            boolean requiresAop = !aopMethods.isEmpty();
+            boolean jdkProxy = requiresAop && useJdkProxy(clazz, aopMethods);
             if (requiresAop) {
-                String problem = proxyabilityProblem(clazz);
+                String problem = proxyabilityProblem(clazz, aopMethods, jdkProxy);
                 if (problem != null)
                     throw new IllegalStateException("AOP required but class cannot be proxied for " + clazz.getName() + ": " + problem);
             }
@@ -209,15 +210,10 @@ public class BeanContainer {
         return clazz.isInterface() || Modifier.isAbstract(clazz.getModifiers()) || !clazz.isAnnotationPresent(Wireable.class);
     }
 
-    private boolean needsAop(Class<?> clazz) {
-        return !findAopMethods(clazz).isEmpty();
-    }
-
     /**
      * Returns null when proxying is possible, otherwise a brief explanation why proxying is impossible.
      */
-    private String proxyabilityProblem(Class<?> clazz) {
-        boolean jdk = useJdkProxy(clazz);
+    private String proxyabilityProblem(Class<?> clazz, List<Method> aopMethods, boolean jdk) {
         if (!jdk) {
             if (Modifier.isFinal(clazz.getModifiers())) {
                 return "class is final (cannot subclass)";
@@ -235,7 +231,7 @@ public class BeanContainer {
                 return "no no-arg constructor";
             }
 
-            for (Method m : findAopMethods(clazz)) {
+            for (Method m : aopMethods) {
                 int mods = m.getModifiers();
                 if (Modifier.isFinal(mods) || Modifier.isPrivate(mods) || Modifier.isStatic(mods)) {
                     return "annotated method '" + m.getName() + "' is final/private/static and cannot be intercepted by subclassing";
@@ -274,8 +270,7 @@ public class BeanContainer {
         return aopMethods;
     }
 
-    private boolean useJdkProxy(Class<?> clazz) {
-        List<Method> aopMethods = findAopMethods(clazz);
+    private boolean useJdkProxy(Class<?> clazz, List<Method> aopMethods) {
         return clazz.getInterfaces().length > 0
                 && !aopMethods.isEmpty()
                 && aopMethods.stream().allMatch(m -> interfaceMethodExists(clazz, m));
